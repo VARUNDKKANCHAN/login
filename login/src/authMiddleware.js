@@ -1,0 +1,12 @@
+// authMiddleware.js
+
+// Middleware to check if user is logged in
+const checkAuth = (req, res, next) => {
+  if (req.session.user) {
+    next();
+  } else {
+    res.redirect('/login');
+  }
+};
+
+module.exports = checkAuth;

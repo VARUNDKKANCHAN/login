@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Start Page</title>
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'nonce-<%= nonce %>'; script-src-attr 'none';">
+</head>
+<body>
+    <h1>Welcome to the Start Page</h1>
+    <button id="checkAuthButton">Go to Index</button>
+    <script nonce="<%= nonce %>">
+        document.getElementById('checkAuthButton').addEventListener('click', function() {
+            fetch('/check-login')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.loggedIn) {
+                        window.location.href = '/index'; // Redirect to index page if logged in
+                    } else {
+                        window.location.href = '/login'; // Redirect to login page if not logged in
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking authentication:', error);
+                });
+        });
+    </script>
+</body>
+</html>

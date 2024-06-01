@@ -1,29 +1,86 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
+const session = require('express-session');
 const ejs = require('ejs');
 const { body, validationResult } = require('express-validator');
 const collection = require('./config'); // Ensure this is your MongoDB collection or equivalent
+const helmet = require('helmet');
+const crypto = require('crypto');
+const dotenv = require('dotenv');
+
+dotenv.config(); // Load environment variables from .env file
+
 const app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+app.use(session({
+  secret: process.env.SESSION_SECRET, // Use environment variable
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true }
+}));
 app.set('view engine', 'ejs');
 
-// Root route
+// Middleware to generate and set nonce
+app.use((req, res, next) => {
+  res.locals.nonce = crypto.randomBytes(16).toString('base64');
+  next();
+});
+
+// Helmet setup with CSP that includes nonce
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", (req, res) => `'nonce-${res.locals.nonce}'`],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+}));
+
+// Middleware to check if user is authenticated
+function checkAuth(req, res, next) {
+  if (req.session.user) {
+    return next();
+  } else {
+    res.redirect('/login');
+  }
+}
+
 app.get('/', (req, res) => {
-  res.redirect('/login'); // Redirect to login page
+  res.render('start');
 });
 
-// Render the login page with optional error message
+app.get('/start', (req, res) => {
+  res.render('start');
+});
+
+app.get('/check-login', (req, res) => {
+  res.json({ loggedIn: !!req.session.user });
+});
+
+app.get('/check-auth', (req, res) => {
+  if (req.session.user) {
+    res.redirect('/index');
+  } else {
+    res.redirect('/login');
+  }
+});
+
 app.get('/login', (req, res) => {
-  const errorMessage = req.query.error || ''; // Get error message from query parameter
-  res.render('login', { errorMessage }); // Pass errorMessage as an option
+  const errorMessage = req.query.error || '';
+  res.render('login', { errorMessage });
 });
 
-// Render the signup page with optional error message
 app.get('/signup', (req, res) => {
-  const errorMessage = req.query.error || ''; // Get error message from query parameter
-  res.render('signup', { errorMessage }); // Pass errorMessage as an option
+  const errorMessage = req.query.error || '';
+  res.render('signup', { errorMessage });
+});
+
+app.get('/index', checkAuth, (req, res) => {
+  res.render('index');
 });
 
 // Custom validation rule for password complexity
@@ -43,21 +100,19 @@ const passwordValidator = (value) => {
 // Handle signup form submission with custom password validation
 app.post('/signup', [
   body('name').trim().notEmpty().withMessage('Name is required'),
-  body('password')
-    .trim()
-    .isLength({ min: 6 }).withMessage('Password must be at least 6 characters long')
-    .custom(passwordValidator), // Add custom password validation
+  body('password').trim().isLength({ min: 6 }).withMessage('Password must be at least 6 characters long')
+    .custom(passwordValidator),
   body('confirmPassword').custom((value, { req }) => {
     if (value !== req.body.password) {
       throw new Error('Passwords do not match');
     }
     return true;
   })
-], async (req, res) => {
+], async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    const errorMessage = errors.array()[0].msg; // Get first error message
-    return res.render('signup', { errorMessage }); // Render signup with error message
+    const errorMessage = errors.array()[0].msg;
+    return res.render('signup', { errorMessage });
   }
 
   const { name, password } = req.body;
@@ -65,10 +120,10 @@ app.post('/signup', [
     const existingUser = await collection.findOne({ name });
     if (existingUser) {
       const errorMessage = 'User already exists';
-      return res.render('signup', { errorMessage }); // Render signup with error message
+      return res.render('signup', { errorMessage });
     }
 
-    const saltRounds = 10;
+    const saltRounds = 12; // Increased rounds for better security
     const hashPassword = await bcrypt.hash(password, saltRounds);
 
     const newUser = new collection({
@@ -77,12 +132,12 @@ app.post('/signup', [
     });
 
     const userData = await newUser.save();
-    console.log('User Data:', userData); // Debugging statement
+    console.log('User Data:', userData);
 
     res.send('User registered successfully');
   } catch (error) {
     console.error('Error in signup:', error);
-    res.status(500).send('Server error');
+    next(error);
   }
 });
 
@@ -90,34 +145,51 @@ app.post('/signup', [
 app.post('/login', [
   body('username').trim().notEmpty().withMessage('Username is required'),
   body('password').trim().notEmpty().withMessage('Password is required')
-], async (req, res) => {
+], async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    const errorMessage = errors.array()[0].msg; // Get first error message
-    return res.redirect(`/login?error=${errorMessage}`); // Redirect to login with error message
+    const errorMessage = errors.array()[0].msg;
+    return res.redirect(`/login?error=${errorMessage}`);
   }
 
   try {
-    const check = await collection.findOne({ name: req.body.username });
-    if (!check) {
+    const user = await collection.findOne({ name: req.body.username });
+    if (!user) {
       const errorMessage = 'Invalid username or password';
-      return res.redirect(`/login?error=${errorMessage}`); // Redirect to login with error message
-    } else {
-      // Compare password
-      const isPasswordMatch = await bcrypt.compare(req.body.password, check.password);
-      if (isPasswordMatch) {
-        res.render("home");
-      } else {
-        const errorMessage = 'Invalid username or password';
-        return res.redirect(`/login?error=${errorMessage}`); // Redirect to login with error message
-      }
+      return res.redirect(`/login?error=${errorMessage}`);
     }
-  } catch {
-    res.redirect('/login?error=Server error'); // Redirect to login with generic error message
+
+    const isPasswordMatch = await bcrypt.compare(req.body.password, user.password);
+    if (isPasswordMatch) {
+      req.session.user = user;
+      res.redirect('/index');
+    } else {
+      const errorMessage = 'Invalid username or password';
+      return res.redirect(`/login?error=${errorMessage}`);
+    }
+  } catch (error) {
+    next(error);
   }
 });
 
-const port = 5000;
+// Handle logout
+app.get('/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Error destroying session:', err);
+    }
+    res.clearCookie('connect.sid');
+    res.redirect('/login');
+  });
+});
+
+// Error handling middleware (placed after all routes)
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send('Something broke!');
+});
+
+const port = process.env.PORT || 5000;
 app.listen(port, () => {
   console.log(`Server running on port: ${port}`);
 });

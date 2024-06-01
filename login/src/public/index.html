@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Product Comparison</title>
+<style>
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0;
+    font-family: Arial, sans-serif;
+  }
+  
+  .container {
+    text-align: center; /* Center align text boxes */
+    padding: 20px;
+  }
+  
+  input[type="text"] {
+    padding: 10px;
+    margin: 5px;
+    width: 250px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+  }
+  
+  button {
+    padding: 10px 20px;
+    margin: 5px;
+    border: none;
+    border-radius: 5px;
+    background-color: #007bff;
+    color: #fff;
+    cursor: pointer;
+    font-size: 16px;
+  }
+  
+  /* Product list styles */
+  #productList {
+    margin-top: 20px;
+    list-style-type: none;
+    padding: 0;
+    text-align: left;
+  }
+  
+  #productList li {
+    margin-bottom: 5px;
+    font-size: 16px;
+  }
+  
+  #productList li button {
+    margin-left: 10px;
+    padding: 5px 10px;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <form action="/compare" method="post">
+    <input type="text" name="p1" class="inp1" placeholder="Enter Product Name 1">
+    <br>
+    <input type="text" name="p2" class="inp2" placeholder="Enter Product Name 2">
+    <br>
+    <input type="submit" class="btn" value="Compare">
+  </form>
+</div>
+<ul id="productList"></ul>
+
+<script>
+  let productData = null;
+  let displayedProducts = new Set(); // Set to store displayed products
+
+  // Function to fetch product data from the server
+  async function fetchProductData() {
+    try {
+      const response = await fetch('/products');
+      productData = await response.json();
+    } catch (error) {
+      console.error('Error fetching product data:', error);
+    }
+  }
+
+  // Function to populate the product list with recent non-duplicate requests
+  function populateProductList() {
+    const productList = document.getElementById('productList');
+    productList.innerHTML = ''; // Clear existing product list
+    for (let i = productData.length - 1; i >= 0 && productList.childElementCount < 6; i--) {
+      const product = productData[i];
+      const productKey = `${product.p1} vs ${product.p2}`;
+      if (!displayedProducts.has(productKey)) {
+        const listItem = document.createElement('li');
+        listItem.textContent = productKey;
+        const compareButton = document.createElement('button');
+        compareButton.textContent = 'Compare';
+        compareButton.addEventListener('click', () => {
+          // Function to fill the text boxes with the selected product
+          fillTextBoxes(product.p1, product.p2);
+        });
+        listItem.appendChild(compareButton);
+        productList.appendChild(listItem);
+        displayedProducts.add(productKey);
+      }
+    }
+  }
+
+  // Function to fill the text boxes with the selected product
+  function fillTextBoxes(product1, product2) {
+    document.querySelector('.inp1').value = product1;
+    document.querySelector('.inp2').value = product2;
+  }
+
+  // Call fetchProductData and populateProductList functions when the page loads
+  window.addEventListener('load', async () => {
+    await fetchProductData();
+    populateProductList();
+  });
+</script>
+</body>
+</html>
