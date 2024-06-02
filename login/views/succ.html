@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login Success</title>
+<style>
+/* Style for the container */
+.container {
+  position: relative;
+  width: 100%;
+  height: 0;
+  overflow: hidden;
+}
+
+/* Style for the dropdown message */
+.message {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  background-color: #4CAF50;
+  color: white;
+  text-align: center;
+  padding: 20px;
+  transition: top 0.5s ease;
+}
+
+/* Style for the dropdown animation */
+.show {
+  top: 0;
+}
+
+</style>
+</head>
+<body>
+
+<!-- Container for the dropdown message -->
+<div class="container" id="container">
+  <!-- Success message -->
+  <div class="message" id="message">
+    Welcome back! You have successfully logged in.
+  </div>
+</div>
+
+<script>
+// Function to show the dropdown message with animation
+function showSuccessMessage() {
+  var container = document.getElementById("container");
+  var message = document.getElementById("message");
+  message.classList.add("show");
+  container.style.height = message.clientHeight + "px";
+  setTimeout(function(){
+    message.classList.remove("show");
+    container.style.height = "0";
+  }, 3000); // Adjust the duration as needed (in milliseconds)
+}
+
+// Call the function to show the success message after login
+showSuccessMessage();
+</script>
+
+</body>
+</html>
